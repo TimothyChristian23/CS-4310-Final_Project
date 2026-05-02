@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OS System Call Comparison</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --win:     #0078D4;
+      --win-bg:  #EBF4FC;
+      --win-dim: #005A9E;
+      --lin:     #E95420;
+      --lin-bg:  #FDF0EB;
+      --lin-dim: #BF4317;
+      --bg:      #F3F5F7;
+      --card:    #FFFFFF;
+      --border:  #DDE1E7;
+      --text:    #1A1F2E;
+      --muted:   #6B7280;
+      --radius:  12px;
+      --shadow:  0 2px 12px rgba(0,0,0,.07);
+    }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: #fff;
+      border-bottom: 1px solid var(--border);
+      padding: 18px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    header h1 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: -.3px;
+    }
+    header p { font-size: .85rem; color: var(--muted); margin-top: 2px; }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .status-row { display: flex; gap: 8px; align-items: center; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: .75rem;
+      font-weight: 500;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: #F0F2F5;
+      color: var(--muted);
+    }
+    .badge.ok    { background: #ECFDF5; color: #047857; }
+    .badge.warn  { background: #FFFBEB; color: #B45309; }
+    .badge.error { background: #FEF2F2; color: #B91C1C; }
+    .dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: currentColor;
+    }
+
+    .btn-primary {
+      background: var(--text);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 9px 18px;
+      font-size: .85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s;
+    }
+    .btn-primary:hover { opacity: .85; }
+    .btn-primary:disabled { opacity: .45; cursor: not-allowed; }
+
+    /* ── Main grid ── */
+    main { padding: 28px 32px; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(520px, 1fr));
+      gap: 22px;
+    }
+
+    /* ── Card ── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .card-header {
+      padding: 18px 22px 14px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .card-title-group {}
+    .card-title {
+      font-size: 1rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-icon { font-size: 1.1rem; }
+    .card-desc { font-size: .8rem; color: var(--muted); margin-top: 3px; }
+
+    .api-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+    .chip {
+      font-size: .72rem;
+      font-weight: 600;
+      font-family: 'JetBrains Mono', monospace;
+      padding: 3px 9px;
+      border-radius: 5px;
+    }
+    .chip.win { background: var(--win-bg); color: var(--win-dim); }
+    .chip.lin { background: var(--lin-bg); color: var(--lin-dim); }
+
+    .btn-run {
+      background: transparent;
+      border: 1.5px solid var(--border);
+      border-radius: 7px;
+      padding: 7px 14px;
+      font-size: .8rem;
+      font-weight: 600;
+      cursor: pointer;
+      color: var(--text);
+      white-space: nowrap;
+      transition: background .12s, border-color .12s;
+      flex-shrink: 0;
+    }
+    .btn-run:hover { background: var(--bg); border-color: #aaa; }
+    .btn-run:disabled { opacity: .45; cursor: not-allowed; }
+
+    /* ── Code comparison ── */
+    .code-compare {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border-bottom: 1px solid var(--border);
+    }
+    .code-pane { overflow: hidden; }
+    .code-pane + .code-pane { border-left: 1px solid var(--border); }
+
+    .code-label {
+      font-size: .7rem;
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      padding: 7px 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .code-label.win { background: var(--win-bg); color: var(--win-dim); }
+    .code-label.lin { background: var(--lin-bg); color: var(--lin-dim); }
+
+    pre {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .72rem;
+      line-height: 1.65;
+      padding: 12px 14px;
+      background: #FAFBFC;
+      overflow-x: auto;
+      color: #2D3748;
+      min-height: 130px;
+    }
+
+    /* ── Timing results ── */
+    .timing-section { padding: 16px 22px 18px; }
+
+    .timing-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .timing-label {
+      font-size: .75rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+    .spinner {
+      display: none;
+      width: 16px; height: 16px;
+      border: 2px solid var(--border);
+      border-top-color: var(--text);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .timing-rows { display: flex; flex-direction: column; gap: 8px; }
+
+    .timing-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .timing-os-label {
+      font-size: .75rem;
+      font-weight: 600;
+      width: 68px;
+      flex-shrink: 0;
+    }
+    .timing-os-label.win { color: var(--win); }
+    .timing-os-label.lin { color: var(--lin); }
+
+    .timing-bar-wrap {
+      flex: 1;
+      height: 10px;
+      background: var(--bg);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .timing-bar {
+      height: 100%;
+      border-radius: 999px;
+      width: 0%;
+      transition: width .5s ease;
+    }
+    .timing-bar.win { background: var(--win); }
+    .timing-bar.lin { background: var(--lin); }
+
+    .timing-val {
+      font-size: .78rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 500;
+      width: 72px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+    .timing-val.pending { color: var(--muted); }
+    .timing-val.error   { color: #B91C1C; font-family: 'Inter', sans-serif; font-size: .7rem; }
+
+    .ref-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: .67rem;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: #FEF9C3;
+      color: #92400E;
+      margin-left: 6px;
+      vertical-align: middle;
+      cursor: default;
+    }
+
+    .ref-banner {
+      font-size: .72rem;
+      color: #92400E;
+      background: #FFFBEB;
+      border: 1px solid #FDE68A;
+      border-radius: 6px;
+      padding: 7px 11px;
+      margin-top: 10px;
+    }
+
+    .error-msg {
+      font-size: .72rem;
+      color: #B91C1C;
+      margin-top: 6px;
+      padding: 6px 10px;
+      background: #FEF2F2;
+      border-radius: 6px;
+    }
+
+    .faster-badge {
+      display: none;
+      font-size: .68rem;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 4px;
+      margin-left: 4px;
+    }
+    .faster-badge.win { background: var(--win-bg); color: var(--win-dim); }
+    .faster-badge.lin { background: var(--lin-bg); color: var(--lin-dim); }
+
+    /* ── Syscall note ── */
+    .syscall-note {
+      font-size: .72rem;
+      color: var(--muted);
+      padding: 0 22px 14px;
+    }
+    .syscall-note strong { color: var(--text); }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      padding: 20px;
+      font-size: .75rem;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>OS System Call Comparison</h1>
+    <p>Windows API &nbsp;vs&nbsp; Linux Syscalls — live benchmarks</p>
+  </div>
+  <div class="header-right">
+    <div class="status-row" id="statusRow">
+      <span class="badge" id="badgeCompiler"><span class="dot"></span>Checking...</span>
+      <span class="badge" id="badgeWsl"><span class="dot"></span>Checking WSL...</span>
+    </div>
+    <button class="btn-primary" id="btnRunAll" onclick="runAll()">Run All Benchmarks</button>
+  </div>
+</header>
+
+<main>
+  <div class="grid" id="grid"><!-- cards injected by JS --></div>
+</main>
+
+<footer>CS 4310 &mdash; Operating Systems &mdash; Windows vs Linux Process Model</footer>
+
+<script>
+/* ─────────────────────────────────────────────
+   Category metadata
+───────────────────────────────────────────── */
+const CATEGORIES = [
+  {
+    id: 'process',
+    icon: '⚙️',
+    title: 'Process Creation',
+    desc: 'Spawn a child process and wait for it to exit',
+    iterations: 20,
+    windows: {
+      api: 'CreateProcess()',
+      syscall: 'NtCreateUserProcess',
+      code: `STARTUPINFOA si = {};
+si.cb = sizeof(si);
+PROCESS_INFORMATION pi;
+
+CreateProcessA(
+  NULL,
+  "cmd.exe /c exit",
+  NULL, NULL,
+  FALSE, 0,
+  NULL, NULL,
+  &si, &pi
+);
+
+WaitForSingleObject(
+  pi.hProcess, INFINITE);
+CloseHandle(pi.hProcess);
+CloseHandle(pi.hThread);`
+    },
+    linux: {
+      api: 'fork() + execl()',
+      syscall: 'clone() + execve()',
+      code: `pid_t pid = fork();
+
+if (pid == 0) {
+  /* child */
+  execl("/bin/true",
+        "true", NULL);
+  _exit(1);
+}
+
+/* parent */
+int status;
+waitpid(pid,
+        &status, 0);`
+    },
+    note: 'Windows CreateProcess is a single call; Linux uses the two-phase fork+exec model (copy-on-write pages avoid copying until written).'
+  },
+  {
+    id: 'fileio',
+    icon: '📁',
+    title: 'File I/O',
+    desc: 'Create file, write 1 KB, seek to start, read back, delete',
+    iterations: 200,
+    windows: {
+      api: 'CreateFile / ReadFile / WriteFile',
+      syscall: 'NtCreateFile / NtReadFile / NtWriteFile',
+      code: `HANDLE h = CreateFileA(
+  "tmp.dat",
+  GENERIC_READ |
+  GENERIC_WRITE,
+  0, NULL,
+  CREATE_ALWAYS,
+  FILE_ATTRIBUTE_NORMAL,
+  NULL);
+
+DWORD n;
+WriteFile(h, buf, 1024, &n, NULL);
+SetFilePointer(h, 0, NULL,
+               FILE_BEGIN);
+ReadFile(h, buf, 1024, &n, NULL);
+CloseHandle(h);
+DeleteFileA("tmp.dat");`
+    },
+    linux: {
+      api: 'open() / read() / write()',
+      syscall: 'openat() / read() / write()',
+      code: `int fd = open(
+  "tmp.dat",
+  O_RDWR | O_CREAT
+         | O_TRUNC,
+  0644);
+
+write(fd, buf, 1024);
+lseek(fd, 0, SEEK_SET);
+read(fd, buf, 1024);
+close(fd);
+unlink("tmp.dat");`
+    },
+    note: 'Both APIs wrap similar kernel I/O paths. Linux syscalls have thinner wrappers; Windows Win32 layer adds parameter validation overhead.'
+  },
+  {
+    id: 'memory',
+    icon: '💾',
+    title: 'Memory Management',
+    desc: 'Reserve + commit 1 MB, touch all pages, release',
+    iterations: 1000,
+    windows: {
+      api: 'VirtualAlloc / VirtualFree',
+      syscall: 'NtAllocateVirtualMemory',
+      code: `void* mem = VirtualAlloc(
+  NULL,
+  1024 * 1024,
+  MEM_COMMIT |
+  MEM_RESERVE,
+  PAGE_READWRITE);
+
+/* touch every page */
+memset(mem, 0,
+       1024 * 1024);
+
+VirtualFree(mem, 0,
+            MEM_RELEASE);`
+    },
+    linux: {
+      api: 'mmap() / munmap()',
+      syscall: 'mmap() / munmap()',
+      code: `void* mem = mmap(
+  NULL,
+  1024 * 1024,
+  PROT_READ |
+  PROT_WRITE,
+  MAP_PRIVATE |
+  MAP_ANONYMOUS,
+  -1, 0);
+
+memset(mem, 0,
+       1024 * 1024);
+
+munmap(mem,
+       1024 * 1024);`
+    },
+    note: 'Both use demand-paging. memset forces physical page allocation. Linux mmap is the direct syscall; VirtualAlloc delegates to NtAllocateVirtualMemory internally.'
+  },
+  {
+    id: 'ipc',
+    icon: '🔗',
+    title: 'IPC — Anonymous Pipes',
+    desc: 'Create pipe, write 1 KB, read it back (1 round-trip)',
+    iterations: 1000,
+    windows: {
+      api: 'CreatePipe / WriteFile / ReadFile',
+      syscall: 'NtCreateNamedPipeFile',
+      code: `SECURITY_ATTRIBUTES sa = {};
+sa.nLength = sizeof(sa);
+sa.bInheritHandle = TRUE;
+
+HANDLE hRead, hWrite;
+CreatePipe(&hRead, &hWrite,
+           &sa, 0);
+
+DWORD n;
+WriteFile(hWrite, buf,
+          1024, &n, NULL);
+ReadFile(hRead, buf,
+         1024, &n, NULL);
+
+CloseHandle(hRead);
+CloseHandle(hWrite);`
+    },
+    linux: {
+      api: 'pipe() / write() / read()',
+      syscall: 'pipe2() / write() / read()',
+      code: `int fd[2];
+pipe(fd);
+/* fd[0]=read end
+   fd[1]=write end */
+
+write(fd[1],
+      buf, 1024);
+
+read(fd[0],
+     buf, 1024);
+
+close(fd[0]);
+close(fd[1]);`
+    },
+    note: 'Anonymous pipes transfer data through an in-kernel ring buffer. Linux pipe() is a single syscall; Windows wraps a named-pipe object under the hood.'
+  }
+];
+
+/* ─────────────────────────────────────────────
+   Render cards
+───────────────────────────────────────────── */
+function buildCards() {
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  CATEGORIES.forEach(c => {
+    grid.innerHTML += `
+    <div class="card" id="card-${c.id}">
+      <div class="card-header">
+        <div class="card-title-group">
+          <div class="card-title">
+            <span class="card-icon">${c.icon}</span>
+            ${c.title}
+          </div>
+          <div class="card-desc">${c.desc} &nbsp;·&nbsp; ${c.iterations} iterations</div>
+          <div class="api-chips" style="margin-top:8px">
+            <span class="chip win">⊞ ${c.windows.api}</span>
+            <span class="chip lin">🐧 ${c.linux.api}</span>
+          </div>
+        </div>
+        <button class="btn-run" id="btn-${c.id}" onclick="runOne('${c.id}')">Run</button>
+      </div>
+
+      <div class="code-compare">
+        <div class="code-pane">
+          <div class="code-label win">⊞ Windows &nbsp;·&nbsp; ${c.windows.syscall}</div>
+          <pre>${escHtml(c.windows.code)}</pre>
+        </div>
+        <div class="code-pane">
+          <div class="code-label lin">🐧 Linux &nbsp;·&nbsp; ${c.linux.syscall}</div>
+          <pre>${escHtml(c.linux.code)}</pre>
+        </div>
+      </div>
+
+      <div class="timing-section">
+        <div class="timing-header">
+          <span class="timing-label">Avg. wall-clock time / call</span>
+          <div class="spinner" id="spin-${c.id}"></div>
+        </div>
+        <div class="timing-rows">
+          <div class="timing-row">
+            <span class="timing-os-label win">⊞ Windows</span>
+            <div class="timing-bar-wrap"><div class="timing-bar win" id="bar-win-${c.id}"></div></div>
+            <span class="timing-val pending" id="val-win-${c.id}">—</span>
+          </div>
+          <div class="timing-row">
+            <span class="timing-os-label lin">🐧 Linux</span>
+            <div class="timing-bar-wrap"><div class="timing-bar lin" id="bar-lin-${c.id}"></div></div>
+            <span class="timing-val pending" id="val-lin-${c.id}">—</span>
+            <span class="ref-badge" id="ref-${c.id}" style="display:none" title="No WSL — showing typical value from a Linux 5.15 x86-64 machine">ref</span>
+          </div>
+        </div>
+        <div id="err-${c.id}"></div>
+      </div>
+
+      <div class="syscall-note">${c.note}</div>
+    </div>`;
+  });
+}
+
+/* ─────────────────────────────────────────────
+   Status check
+───────────────────────────────────────────── */
+async function checkStatus() {
+  try {
+    const r = await fetch('/api/status');
+    const d = await r.json();
+
+    const bc = document.getElementById('badgeCompiler');
+    bc.className = 'badge ok';
+    bc.innerHTML = `<span class="dot"></span>Python benchmarks ready`;
+
+    const bw = document.getElementById('badgeWsl');
+    bw.className = 'badge ' + (d.wsl ? 'ok' : 'warn');
+    bw.innerHTML = `<span class="dot"></span>${d.wsl ? 'WSL — live Linux' : 'No WSL — reference values'}`;
+  } catch {
+    ['badgeCompiler','badgeWsl'].forEach(id => {
+      const el = document.getElementById(id);
+      el.className = 'badge error';
+      el.innerHTML = '<span class="dot"></span>Server error';
+    });
+  }
+}
+
+/* ─────────────────────────────────────────────
+   Run helpers
+───────────────────────────────────────────── */
+function setRunning(id, running) {
+  document.getElementById(`btn-${id}`).disabled = running;
+  document.getElementById(`spin-${id}`).style.display = running ? 'block' : 'none';
+}
+
+function formatMs(ms) {
+  if (ms === null || ms === undefined) return '—';
+  if (ms < 0.01) return ms.toFixed(5) + ' ms';
+  if (ms < 1)    return ms.toFixed(4) + ' ms';
+  if (ms < 10)   return ms.toFixed(3) + ' ms';
+  return ms.toFixed(2) + ' ms';
+}
+
+function updateBars(id, winMs, linMs) {
+  const max = Math.max(winMs ?? 0, linMs ?? 0);
+  if (!max) return;
+
+  const pct = v => v == null ? 0 : Math.max(4, (v / max) * 100);
+  document.getElementById(`bar-win-${id}`).style.width = pct(winMs) + '%';
+  document.getElementById(`bar-lin-${id}`).style.width = pct(linMs) + '%';
+}
+
+async function runOne(id) {
+  setRunning(id, true);
+  document.getElementById(`err-${id}`).innerHTML = '';
+  ['win','lin'].forEach(os => {
+    document.getElementById(`val-${os}-${id}`).className = 'timing-val pending';
+    document.getElementById(`val-${os}-${id}`).textContent = '…';
+    document.getElementById(`bar-${os}-${id}`).style.width = '0%';
+  });
+
+  try {
+    const r   = await fetch(`/api/benchmark/${id}`);
+    const d   = await r.json();
+    const win = d.windows;
+    const lin = d.linux;
+
+    const valWin = document.getElementById(`val-win-${id}`);
+    const valLin = document.getElementById(`val-lin-${id}`);
+
+    if (win.time_ms != null) {
+      valWin.className = 'timing-val';
+      valWin.textContent = formatMs(win.time_ms);
+    } else {
+      valWin.className = 'timing-val error';
+      valWin.textContent = 'error';
+    }
+
+    const refBadge = document.getElementById(`ref-${id}`);
+    if (lin.time_ms != null) {
+      valLin.className = 'timing-val';
+      valLin.textContent = formatMs(lin.time_ms);
+      if (!lin.live) {
+        refBadge.style.display = 'inline-flex';
+        refBadge.title = lin.note
+          ? `Reference value — ${lin.note}`
+          : 'Reference value (WSL unavailable)';
+      } else {
+        refBadge.style.display = 'none';
+      }
+    } else {
+      valLin.className = 'timing-val pending';
+      valLin.textContent = 'error';
+      refBadge.style.display = 'none';
+    }
+
+    updateBars(id, win.time_ms, lin.time_ms);
+
+    // Show error / reference banner
+    const errDiv = document.getElementById(`err-${id}`);
+    const msgs = [];
+    if (win.error && win.time_ms == null) msgs.push(`<div class="error-msg">Windows: ${escHtml(win.error)}</div>`);
+    if (lin.time_ms != null && !lin.live)
+      msgs.push(`<div class="ref-banner">🐧 Linux value is a <strong>reference</strong> from a bare-metal Linux 5.15 x86-64 machine — install WSL for live numbers.</div>`);
+    if (lin.error && lin.time_ms == null) msgs.push(`<div class="error-msg">Linux: ${escHtml(lin.error)}</div>`);
+    errDiv.innerHTML = msgs.join('');
+
+  } catch (e) {
+    document.getElementById(`err-${id}`).innerHTML =
+      `<div class="error-msg">Request failed: ${escHtml(String(e))}</div>`;
+  }
+
+  setRunning(id, false);
+}
+
+async function runAll() {
+  const btn = document.getElementById('btnRunAll');
+  btn.disabled = true;
+  btn.textContent = 'Running…';
+  await Promise.all(CATEGORIES.map(c => runOne(c.id)));
+  btn.disabled = false;
+  btn.textContent = 'Run All Benchmarks';
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ─────────────────────────────────────────────
+   Init
+───────────────────────────────────────────── */
+buildCards();
+checkStatus();
+</script>
+</body>
+</html>
